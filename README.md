@@ -82,7 +82,7 @@ pw2-jailbreak
 README
 ```
 
-原始工具要求在 Linux 终端运行。它的职责是识别已挂载的 Kindle 用户分区，写入用于触发的脚本和更新文件；如果指定本地 jailbreak 包，就会把该包解压到用户分区，并生成用于记录执行结果的包装脚本。这个压缩包本身不是 Kindle 端的更新文件。
+原始工具要求在 Linux 终端运行。它的职责是识别已挂载的 Kindle 用户分区，写入用于触发的脚本和更新文件；在兼容的 jailbreak 包输入下，还可以把包解压到用户分区并生成用于记录执行结果的包装脚本。需要注意：本次归档的 K5 包实际使用 `jb.sh` 作为入口，而原始 yossarian 工具的校验逻辑面向另一种 `jailbreak.sh` 命名，因此本次把它作为 delivery exploit 的原始参考和分析工具，K5 包的 7 个文件按清单投放。这个压缩包本身不是 Kindle 端的更新文件。
 
 ### 最小验证目标
 
@@ -100,7 +100,7 @@ uid=0(root)
 
 1. **准备并校验文件。**电脑端保留官方 `update_kindle_5.4.4.bin`、`kindle-5.4-jailbreak.zip` 和 `pw2-jailbreak-1.1.1.tar.gz` 原始文件，先核对 SHA-256，不直接修改归档包。
 2. **完成固件降级。**把 `update_kindle_5.4.4.bin` 放入 Kindle USB 根目录，电脑端执行 `sync`，保持 USB 连接，长按电源键让 recovery updater 处理更新包；等待更新、重启和重新挂载完成，并确认固件包被系统消费。
-3. **投放越狱文件。**在 Linux 电脑端运行 `pw2-jailbreak`，或按 legacy 包内容手动把上面列出的 7 个文件放入 Kindle 用户分区根目录。此时放入的是 `jb.sh`、特殊 `Update_jb_$(...).bin` 和配套组件，不是把 `pw2-jailbreak-1.1.1.tar.gz` 当成更新包复制进去。
+3. **投放越狱文件。**本次实际投放以 `kindle-5.4-jailbreak.zip` 解压后的 7 个文件为准，手动放入 Kindle 用户分区根目录；`pw2-jailbreak` 则作为电脑端的 delivery exploit 工具和原始参考，用于理解或生成兼容的触发文件。此时放入的是 `jb.sh`、特殊 `Update_jb_$(...).bin` 和配套组件，不是把 `pw2-jailbreak-1.1.1.tar.gz` 当成更新包复制进去。
 4. **同步并触发。**文件复制完成后执行 `sync`，确认写入结束；电脑端安全弹出/卸载 Kindle，让 Kindle 退出 USB 大容量存储状态，再按电源键让设备休眠，等待 delivery exploit 或 updater 路径处理触发文件。
 5. **回连检查。**等待约 2–3 分钟后重新连接 USB，检查用户分区中的执行日志、测试文件和文件消费情况；生成的包装脚本通常会把日志写到 `/mnt/us/documents/jb-log.txt`。如果确认 `uid=0(root)`，再进入后续部署。
 6. **建立远程管理。**取得 root 后启用 USBNetwork 的开机启动，使 Kindle 可以提供 USB Ethernet Gadget/USB 虚拟网卡；同时配置 USB SSH 与 Wi‑Fi SSH 共存。这里 USB 大容量存储和 USB 虚拟网卡是不同工作模式，切换期间不要提前拔线或中断当前验证会话。
