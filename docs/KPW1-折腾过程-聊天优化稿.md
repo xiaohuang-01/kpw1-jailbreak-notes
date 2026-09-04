@@ -82,4 +82,4 @@ uid=0(root)
 
 ## 6. 归档状态
 
-本次 KPW1 相关的官方 5.4.4 固件、K5 legacy jailbreak 包和 yossarian 原始包已单独归档，并同步到新的私有 repository。真实账号、密码、完整序列号和 `.env` 均未提交。
+本次 KPW1 相关的官方 5.4.4 固件、K5 legacy jailbreak 包和 yossarian 原始包已单独归档，并同步到专用 repository。真实账号、密码、完整序列号和 `.env` 均未提交。
