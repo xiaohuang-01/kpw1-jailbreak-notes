@@ -51,77 +51,113 @@ KPW1 识别正常
 
 这一阶段已经实际完成：KPW1 成功进入 5.4.4 更新流程，更新结束后设备正常启动，根目录中的固件包被系统消费掉。
 
-## 4. 越狱验证：先证明执行能力，再考虑完整安装
+## 4. 越狱验证：先确认执行入口
 
-因为触摸已经坏掉，普通的“复制文件 → 设置 → Update Your Kindle”链路不可用，所以没有一上来就直接改 rootfs 或安装一整套服务，而是把验证拆成最小闭环。
+因为触摸已经坏掉，普通的“复制文件 → 设置 → Update Your Kindle”链路不可用，所以先把电脑端工具、Kindle 端文件和触发动作拆开核对。
 
-分析和比对的材料包括：
+### 真正使用的文件
 
-- NiLuJe / KindleModding 的 K5 legacy jailbreak 包；
-- `jb.sh`、`bridge.sh`、`bridge.conf`、`developer.keystore` 等配套文件；
-- 特殊的 `Update_jb_$(...).bin` 文件名；
-- yossarian17 的 `pw2-jailbreak-1.1.1.tar.gz` 及其 eject 触发思路。
+`kindle-5.4-jailbreak.zip` 解压后包含 7 个需要放到 Kindle USB 根目录、也就是 Kindle 侧 `/mnt/us/` 的文件：
 
-最小 PoC 的目标只做一件事：在触发后向用户分区写出一个测试文件，记录 `id`、`uname` 和系统版本。判断标准是能否看到类似：
+```text
+Update_jb_$(cd mnt && cd us && sh jb.sh).bin
+bridge.conf
+bridge.sh
+developer.keystore
+gandalf
+jb.sh
+json_simple-1.1.jar
+```
+
+其中：
+
+- `jb.sh` 是被触发后执行的入口脚本；
+- `Update_jb_$(cd mnt && cd us && sh jb.sh).bin` 是特殊更新文件名，用来进入旧版 updater 的处理路径；
+- `bridge.sh`、`bridge.conf`、`developer.keystore`、`gandalf` 和 `json_simple-1.1.jar` 是 legacy jailbreak 的配套组件。
+
+`pw2-jailbreak-1.1.1.tar.gz` 不需要直接复制到 Kindle。它是电脑端的 host-side delivery 工具，解压后主要是：
+
+```text
+pw2-jailbreak
+README
+```
+
+原始工具要求在 Linux 终端运行。它的职责是识别已挂载的 Kindle 用户分区，写入用于触发的脚本和更新文件；如果指定本地 jailbreak 包，就会把该包解压到用户分区，并生成用于记录执行结果的包装脚本。这个压缩包本身不是 Kindle 端的更新文件。
+
+### 最小验证目标
+
+最初的低风险验证只计划让触发脚本写出 `ROOT_TEST.txt`，记录 `id`、`uname` 和系统版本，判断是否出现：
 
 ```text
 uid=0(root)
 ```
 
-如果成立，就证明“不依赖触摸、不焊 UART，仍能获得 root 代码执行”；之后再把 payload 换成 jailbreak bridge、USBNetwork 或 SSH 的部署动作。
-
-需要特别保留这个边界：现有记录已经完成了漏洞链分析和验证方案设计，但没有在可见记录中形成“root PoC 已成功、完整越狱已完成”的明确结果。因此整理时不把它写成既成事实。
+确认 root 执行后，再继续部署 jailbreak bridge、USBNetwork 和 SSH，而不是一开始就直接改 rootfs。
 
 ## 5. KPW1 越狱实施阶段
 
-5.4.4 降级完成后，开始准备 K5/PW1/PW2 legacy jailbreak 包，并重点核对 `jb.sh`、`bridge.sh`、`bridge.conf`、`developer.keystore`、`gandalf`、`json_simple-1.1.jar` 和特殊的 `Update_jb_$(...).bin` 文件名。
+实际实施按“固件降级 → 投放越狱文件 → 安全弹出触发 → 回连验证 → 部署管理通道”推进。
 
-由于触摸失灵，原本需要进入设置菜单点击 `Update Your Kindle` 的标准流程不能直接使用，所以转而研究 yossarian17 的无触摸 delivery exploit：通过 USB eject 或相关更新处理路径触发高权限脚本执行，再由脚本完成 jailbreak。
+1. **准备并校验文件。**电脑端保留官方 `update_kindle_5.4.4.bin`、`kindle-5.4-jailbreak.zip` 和 `pw2-jailbreak-1.1.1.tar.gz` 原始文件，先核对 SHA-256，不直接修改归档包。
+2. **完成固件降级。**把 `update_kindle_5.4.4.bin` 放入 Kindle USB 根目录，电脑端执行 `sync`，保持 USB 连接，长按电源键让 recovery updater 处理更新包；等待更新、重启和重新挂载完成，并确认固件包被系统消费。
+3. **投放越狱文件。**在 Linux 电脑端运行 `pw2-jailbreak`，或按 legacy 包内容手动把上面列出的 7 个文件放入 Kindle 用户分区根目录。此时放入的是 `jb.sh`、特殊 `Update_jb_$(...).bin` 和配套组件，不是把 `pw2-jailbreak-1.1.1.tar.gz` 当成更新包复制进去。
+4. **同步并触发。**文件复制完成后执行 `sync`，确认写入结束；电脑端安全弹出/卸载 Kindle，让 Kindle 退出 USB 大容量存储状态，再按电源键让设备休眠，等待 delivery exploit 或 updater 路径处理触发文件。
+5. **回连检查。**等待约 2–3 分钟后重新连接 USB，检查用户分区中的执行日志、测试文件和文件消费情况；生成的包装脚本通常会把日志写到 `/mnt/us/documents/jb-log.txt`。如果确认 `uid=0(root)`，再进入后续部署。
+6. **建立远程管理。**取得 root 后启用 USBNetwork 的开机启动，使 Kindle 可以提供 USB Ethernet Gadget/USB 虚拟网卡；同时配置 USB SSH 与 Wi‑Fi SSH 共存。这里 USB 大容量存储和 USB 虚拟网卡是不同工作模式，切换期间不要提前拔线或中断当前验证会话。
+7. **固定系统级 Wi‑Fi。**最初创建过 `kindle-wifi-autoconnect.sh` 作为临时兜底，后来改为调用 Kindle 原生 `wifid` 保存 Wi‑Fi profile。原生 profile 写入后由系统负责开机自动连接，不再依赖每次开机手动允许运行脚本；临时自动连接脚本随后删除。
 
-本次实际完成的是越狱包的获取、静态分析和最小 PoC 设计。PoC 只计划写出包含 `id`、`uname` 和系统版本的测试文件，用来判断是否获得 root 执行；在现有记录中，没有把“root PoC 成功”或“完整越狱成功”作为已确认结果。
+## 6. 电脑端与 Kindle 端的同步配合
 
-## 6. 越狱过程：电脑端与 Kindle 端配合
+本次无触摸操作的关键，是严格区分“USB 仍在写入”和“USB 已弹出、等待 Kindle 执行”两个状态。
 
-这一阶段的关键不是单独把文件复制到 Kindle，而是让电脑端的文件准备、同步和安全弹出，与 Kindle 端的更新处理和休眠触发形成一个闭环。由于本机触摸失灵，电脑端承担了大部分准备和检查工作，Kindle 端主要负责执行更新路径中的高权限脚本。
+### 电脑端
 
-### 电脑端操作
+1. **挂载阶段：**USB 连接 Kindle，Mac 侧通常看到 `/Volumes/Kindle`，这对应 Kindle 侧的 `/mnt/us`。
+2. **复制阶段：**把固件或越狱文件复制到正确位置。固件 `update_kindle_5.4.4.bin` 放根目录；legacy 越狱的 7 个文件也放根目录；脚本生成的日志和测试结果位于 `documents/`。
+3. **落盘阶段：**复制结束后执行 `sync`，确认命令返回且文件大小、SHA-256 或目录清单正常；此时保持 USB 连接。
+4. **触发阶段：**固件降级时不要先弹出，而是保持 USB 连接并用电源键触发 recovery updater；delivery exploit 时则是在 host-side 工具完成写入后执行安全弹出/卸载。
+5. **检查阶段：**弹出后等待 Kindle 处理，再重新连接 USB，读取日志、测试文件和更新包是否消失。取得 root 后，电脑端改用 USB SSH 或 Wi‑Fi SSH 进行配置和验证，连接信息只保留在本地，不写入仓库。
 
-1. 在电脑上准备并校验官方 5.4.4 固件、K5/PW1/PW2 legacy jailbreak 包和 `pw2-jailbreak-1.1.1.tar.gz`，保留原始压缩包，不直接修改其中的 payload。
-2. 通过 USB 连接 Kindle，等待用户分区挂载。电脑看到的 Kindle 根目录对应 Kindle 侧的 `/mnt/us`，因此需要把待处理文件放在这个用户分区，而不是电脑上的其他目录。
-3. 先完成文件复制，再执行同步，确保文件内容已经真正写入 Kindle；同步期间保持数据线连接，不要在写入尚未完成时弹出设备。
-4. 如果走 yossarian17 的 delivery exploit，电脑端在 Linux 终端中运行对应脚本，让它把触发所需的脚本和更新文件放入 Kindle 用户分区。该原始工具的设计前提是 Linux 环境，macOS 侧可负责下载、校验和挂载，但脚本执行环境需要单独确认。
-5. 文件写入完成后，在电脑端执行安全弹出/卸载 Kindle。这里的“弹出”是结束 USB 大容量存储会话，不等于立刻拔掉数据线；重点是让 Kindle 退出 USB 存储状态，重新处理用户分区中的触发文件。
-6. 重新连接 USB 前，电脑端先保留终端和校验记录，便于后续重新挂载后检查日志、测试文件和文件是否被系统消费。
+### Kindle 端
 
-### Kindle 端配合
+1. 固件复制和同步期间保持 USB 连接，不按电源键、不拔线。
+2. 电脑端安全弹出后，Kindle 退出 USB 存储模式；触摸失灵时，不依赖设置菜单中的 `Update Your Kindle`。
+3. 按电源键进入休眠，等待约 2–3 分钟，让 delivery exploit 或 updater 处理用户分区中的触发文件。
+4. 重新连接 USB 后，由电脑端读取结果；确认 root 后再进行 USBNetwork、Wi‑Fi profile 和 SSH 配置。
 
-1. Kindle 在文件复制和同步阶段保持连接，不在电脑尚未完成同步时操作电源键。
-2. 电脑安全弹出后，按照 delivery exploit 的触发节奏按电源键让 Kindle 进入休眠；脚本设计为在 Kindle 被弹出并休眠一段时间后自动运行。
-3. 等待大约 2–3 分钟，让 Kindle 完成脚本触发。由于触摸失灵，不能把“进入设置菜单点击 `Update Your Kindle`”作为主要依赖；如果设备界面仍能提供其他可用触发路径，也只能作为辅助验证。
-4. 脚本执行后，重新连接 USB，在用户分区检查测试文件或 `/mnt/us/documents/jb-sh.txt` 等输出，核对 `id`、`uname` 和系统版本信息。
-5. 只有在输出明确显示 `uid=0(root)` 后，才进入 jailbreak bridge 或后续服务部署阶段；如果没有测试输出，应先回到同步、弹出和触发环节排查，不直接覆盖系统文件。
-
-整体配合关系可以概括为：
+整体链路可以概括为：
 
 ```text
-电脑准备/校验文件
+电脑准备并校验文件
     ↓
-USB 连接并复制到用户分区
+USB 连接，文件写入 /mnt/us
     ↓
-电脑执行 sync，保持连接
+电脑执行 sync，等待落盘
     ↓
-电脑安全弹出 Kindle
+固件阶段：保持连接并长按电源
+越狱阶段：安全弹出并让 Kindle 休眠
     ↓
-Kindle 退出 USB 存储并休眠
+Kindle 处理 updater / delivery exploit
     ↓
-等待 delivery exploit 触发脚本
+重新连接 USB，电脑读取日志并确认 root
     ↓
-重新连接 USB，电脑检查输出并判断 root
+启用 USBNetwork、双 SSH 和原生 Wi‑Fi 自动连接
 ```
 
-现有记录能够确认的是 5.4.4 降级、越狱包获取和这套电脑/Kindle 配合流程的分析与设计；没有把 root PoC 或完整越狱成功作为已确认结果。
+## 7. 越狱后的常态化配置
 
-## 7. 归档状态
+取得 root 并建立 USB SSH 后，又完成了几项日常维护配置：
+
+- **USB 虚拟网卡：**允许 USBNetwork 开机启动，提供 USB SSH 管理通道；
+- **Wi‑Fi 自动连接：**使用 Kindle 原生 `wifid createProfile` 保存网络，由系统在开机后自动连接，不需要每次允许运行脚本；
+- **双通道 SSH：**USB SSH 与 Wi‑Fi SSH 共存，便于 USB 直连和无线维护之间切换；
+- **关闭背光：**通过 USB SSH 将背光亮度设为 0，屏幕内容显示不受影响；
+- **阻断 OTA：**在 `/mnt/us/` 创建 `update.bin.tmp.partial` 目录，阻止无线 OTA 创建临时更新文件。该设置只针对自动升级，手动复制 `Update_*.bin` 仍可执行更新；
+- **配置验证：**完整重启后，Wi‑Fi 自动恢复连接，USB SSH 自动启动，两条通道均可进入 root shell，Mac 网络设置未改动。
+
+这里不记录实际 Wi‑Fi 名称、IP 地址、SSH 私钥路径或密码；这些信息属于设备和家庭网络配置，不属于越狱过程本身。
+
+## 8. 归档状态
 
 本次 KPW1 相关的官方 5.4.4 固件、K5 legacy jailbreak 包和 yossarian 原始包已单独归档，并同步到本仓库。真实账号、密码、完整序列号和 `.env` 均未提交。
 
